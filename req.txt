@@ -1,0 +1,19 @@
+# Core dependencies
+requests==2.31.0
+PyYAML==6.0.1
+
+# NLP & ML
+spacy==3.7.2
+transformers==4.43.4
+torch==2.3.0
+scikit-learn==1.5.1
+
+# Fact-checking & compliance (future steps)
+google-api-python-client==2.137.0
+
+# Dashboard / CLI
+rich==13.7.1
+textual==0.79.1   # optional if we want fancier terminal UI
+
+# Utils
+python-dotenv==1.0.1
