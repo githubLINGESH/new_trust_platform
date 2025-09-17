@@ -1,51 +1,58 @@
-# processing/topic_modeling.py
-
-from bertopic import BERTopic
-from sentence_transformers import SentenceTransformer
+from google import genai
+from sklearn.cluster import KMeans
 import logging
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class TopicModeler:
-    """
-    Performs topic modeling on news articles using BERTopic with Sentence-BERT embeddings.
-    """
+    @staticmethod
+    def gemini_topic_model(text: str) -> list:
+            """
+            Uses Gemini Pro to extract topics from a news article.
+            Always returns a list of dicts: [{"label": "topic"}]
+            """
+            try:
+                client = genai.Client(api_key="YOUR_API_KEY")
+                response = client.models.generate_content(
+                    model="gemini-pro",
+                    contents=f"Extract 3-5 main topics or themes from the following article:\n\n{text}"
+                )
+                # Gemini often returns a string → split into topics
+                topics = response.text.split("\n")
+                cleaned = [t.strip("-• ") for t in topics if t.strip()]
+                return [{"label": t} for t in cleaned]
+            except Exception as e:
+                print(f"Gemini topic modeling failed: {e}")
+                return [{"label": "general"}]
 
-    def __init__(self, embedding_model="all-MiniLM-L6-v2"):
-        try:
-            logger.info(f"Loading SentenceTransformer model: {embedding_model}")
-            self.embedding_model = SentenceTransformer(embedding_model)
-            self.model = BERTopic(embedding_model=self.embedding_model)
-        except Exception as e:
-            logger.error(f"Failed to initialize TopicModeler: {e}")
-            raise
 
-    def fit_transform(self, documents: list) -> dict:
+    @staticmethod
+    def gemini_embedding_topic_model(docs, n_clusters=5):
         """
-        Fit the topic model on a list of documents.
-
-        Args:
-            documents (list): List of news article texts
-
-        Returns:
-            dict: Mapping of each doc -> topic
+        Generate topics by embedding articles and clustering.
+        Returns a dict with cluster IDs as keys and a list of labeled topics as values.
         """
-        if not documents:
-            logger.warning("Empty document list passed to TopicModeler.")
-            return {}
-
         try:
-            topics, _ = self.model.fit_transform(documents)
-            result = {
-                idx: {
-                    "document": documents[idx],
-                    "topic": str(topics[idx]),
-                    "topic_label": self.model.get_topic(topics[idx])
-                }
-                for idx in range(len(documents))
-            }
-            return result
+            client = genai.Client(api_key="YOUR_API_KEY")
+
+            embeddings = []
+            for doc in docs:
+                resp = client.models.embed_content(
+                    model="models/embedding-001",
+                    content=doc
+                )
+                embeddings.append(resp.embedding.values)
+
+            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+            labels = kmeans.fit_predict(embeddings)
+
+            clustered = {i: [] for i in range(n_clusters)}
+            for idx, label in enumerate(labels):
+                clustered[label].append({"label": docs[idx][:50], "score": 1.0})
+
+            return clustered
+
         except Exception as e:
-            logger.error(f"Topic modeling failed: {e}")
-            return {}
+            logger.error(f"Gemini embedding topic modeling failed: {e}")
+            return {0: [{"label": "error", "score": 0.0}]}

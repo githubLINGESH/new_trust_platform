@@ -1,1 +1,4 @@
 newsenv
+./__pycache__/
+*.pyc
+instance/

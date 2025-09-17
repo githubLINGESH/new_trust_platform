@@ -1,16 +1,13 @@
-# processing/sentiment_analysis.py
-
 from transformers import pipeline
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class SentimentAnalyzer:
     """
     Wrapper class around Hugging Face's sentiment-analysis pipeline.
-    This will classify each news article as positive, negative, or neutral
-    with confidence scores.
     """
 
     def __init__(self, model_name="cardiffnlp/twitter-roberta-base-sentiment"):
@@ -25,21 +22,37 @@ class SentimentAnalyzer:
         """
         Analyze sentiment of given text.
 
-        Args:
-            text (str): Cleaned text to analyze
-
         Returns:
-            dict: Sentiment result {label, score}
+            dict: {label, score}
         """
         if not text or len(text.strip()) == 0:
             return {"label": "neutral", "score": 0.0}
 
         try:
-            result = self.analyzer(text[:512])[0]  # limit input to 512 tokens
+            result = self.analyzer(text[:512])[0]  # limit input
             return {
-                "label": result["label"],
-                "score": round(float(result["score"]), 4)
+                "label": result.get("label", "unknown"),
+                "score": round(float(result.get("score", 0.0)), 4)
             }
         except Exception as e:
             logger.error(f"Sentiment analysis failed: {e}")
             return {"label": "error", "score": 0.0}
+
+
+# Singleton analyzer instance
+analyzer = SentimentAnalyzer()
+
+
+def get_sentiment(text: str) -> dict:
+    """
+    Safe wrapper around analyzer.analyze()
+    Always returns {label, score}, never None
+    """
+    try:
+        result = analyzer.analyze(text)
+        if not isinstance(result, dict) or "label" not in result:
+            return {"label": "neutral", "score": 0.0}
+        return result
+    except Exception as e:
+        logger.error(f"Sentiment wrapper failed: {e}")
+        return {"label": "error", "score": 0.0}

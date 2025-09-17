@@ -1,17 +1,18 @@
 import sys
 from ingestion.news_fetcher import fetch_live_news
 from processing.text_cleaner import clean_text
-from processing.sentiment_analysis import SentimentAnalyzer
-from processing.topic_modeling import TopicModeler
-from processing.summarizer import Summarizer
+from processing.nlp_segmentation import categorize_news
+from processing.sentiment_analysis import get_sentiment
 from compliance.fact_checker import verify_facts
 from compliance.compliance_rules import check_compliance
 from compliance.trust_score import calculate_trust_score
 from analysis.trend_analysis import detect_trends
 from dashboard.cli_dashboard import show_results
 from utils.logger import get_logger
+from processing.topic_modeling import TopicModeler
 
 logger = get_logger(__name__)
+
 
 def run_pipeline():
     logger.info("🚀 Starting News Trust Platform pipeline...")
@@ -24,59 +25,68 @@ def run_pipeline():
         logger.error(f"❌ Error fetching news: {e}")
         sys.exit(1)
 
-    # Initialize processors once
-    sentiment_analyzer = SentimentAnalyzer()
-    topic_modeler = TopicModeler()
-    summarizer = Summarizer()
+    results = []
 
-    processed_articles = []
-
-    for article in news_data:
+    for idx, article in enumerate(news_data):
         try:
-            title = article.get("title", "Untitled")
-            content = article.get("content", "") or article.get("description", "")
-
-            if not content:
-                logger.warning(f"⚠️ Skipping article with no content: {title}")
+            if not isinstance(article, dict):  # ✅ safeguard
+                logger.error(f"❌ Skipping article at index {idx}, not a dict: {article}")
                 continue
 
-            # 2. Clean text
+            # ✅ Safe dictionary access
+            title = article.get("title", "Untitled")
+            trust_score = article.get("trust_score", None)
+            label = article.get("label", None)
+
+            logger.info(f"Processing article: {title} | Trust Score: {trust_score} | Label: {label}")
+
+            # ---- Clean text ----
+            content = article.get("content", "")
             text = clean_text(content)
+            logger.debug(f"Successfully cleaned text for article: {title}")
 
-            # 3. Sentiment & Topic
-            sentiment = sentiment_analyzer.analyze(text)
-            topics = topic_modeler.fit_transform([text])
-            topic_label = list(topics.values())[0]["topic_label"]
+            # ---- Categorization & sentiment ----
+            categories = categorize_news(text) or ["uncategorized"]
+            sentiment = get_sentiment(text)  # dict {label, score}
 
-            # 4. Summarization
-            summary = summarizer.summarize(text)
+            # ---- Compliance & Fact Checking ----
+            facts_ok = verify_facts(text)
+            compliance_ok = check_compliance(text)  # ✅ only 1 arg
 
-            # 5. Compliance & Fact Checking
-            fact_result = verify_facts(text)
-            compliance_result = check_compliance(text)
-            trust_score = calculate_trust_score(sentiment, compliance_result, fact_result)
+            trust_score = calculate_trust_score(sentiment, compliance_ok, facts_ok)
 
-            processed_articles.append({
+            # ---- Trend Analysis ----
+            trend_tags = detect_trends(text) or []
+
+            # ---- Gemini Topic Modeling ----
+            topics_raw = TopicModeler.gemini_topic_model(text) or []
+            topics = [t.get("label", "unknown") for t in topics_raw if isinstance(t, dict)]
+
+            # ---- Collect Results ----
+            results.append({
                 "title": title,
-                "summary": summary,
+                "categories": categories,
                 "sentiment": sentiment,
-                "topic": topic_label,
-                "facts_verified": fact_result,
-                "compliance": compliance_result,
+                "facts_verified": facts_ok,
+                "compliance_passed": compliance_ok,
                 "trust_score": trust_score,
-                "text": text
+                "trends": trend_tags,
+                "topics": topics
             })
 
         except Exception as e:
-            logger.error(f"❌ Error processing article {article.get('title', 'N/A')}: {e}")
+            # ✅ Don’t assume dict here → safe logging
+            safe_title = article["title"] if isinstance(article, dict) and "title" in article else str(article)
+            logger.error(f"❌ Error processing article {safe_title}: {e}", exc_info=True)
             continue
 
-    # 6. Trend Analysis
-    if processed_articles:
-        trends = detect_trends(processed_articles)
-        show_results(processed_articles, trends)
+    # ---- Show Results ----
+    if results:
+        show_results(results)
     else:
         logger.warning("⚠️ No results to display.")
+
+
 
 if __name__ == "__main__":
     run_pipeline()
