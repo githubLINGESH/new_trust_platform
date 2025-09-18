@@ -50,17 +50,31 @@ def run_pipeline():
             sentiment = get_sentiment(text)  # dict {label, score}
 
             # ---- Compliance & Fact Checking ----
-            facts_ok = verify_facts(text)
-            compliance_ok = check_compliance(text)  # ✅ only 1 arg
 
+            facts_ok = verify_facts(text)
+            compliance_ok = check_compliance(text)
             trust_score = calculate_trust_score(sentiment, compliance_ok, facts_ok)
 
-            # ---- Trend Analysis ----
-            trend_tags = detect_trends(text) or []
+            # ---- Gemini Topic Modeling (always define topics) ----
+            try:
+                topics_raw = TopicModeler.gemini_topic_model(text) or []
+                topics = [t.get("label", "unknown") for t in topics_raw if isinstance(t, dict)]
+            except Exception as e:
+                logger.error(f"❌ Topic modeling failed for article '{title}': {e}")
+                topics = []
 
-            # ---- Gemini Topic Modeling ----
-            topics_raw = TopicModeler.gemini_topic_model(text) or []
-            topics = [t.get("label", "unknown") for t in topics_raw if isinstance(t, dict)]
+            # ---- Trend Analysis (safe input) ----
+            try:
+                trend_tags = detect_trends([{
+                    "text": text,
+                    "sentiment": sentiment,
+                    "topic": topics[0] if topics else "unknown"
+                }]) or {}
+            except Exception as e:
+                logger.error(f"❌ Trend analysis failed for article '{title}': {e}")
+                trend_tags = {}
+
+
 
             # ---- Collect Results ----
             results.append({
@@ -80,9 +94,23 @@ def run_pipeline():
             logger.error(f"❌ Error processing article {safe_title}: {e}", exc_info=True)
             continue
 
-    # ---- Show Results ----
+   # ---- Show Results ----
     if results:
-        show_results(results)
+        # Aggregate trends across all articles
+        try:
+            global_trends = detect_trends([
+                {
+                    "text": r["title"] + " " + " ".join(r.get("topics", [])),
+                    "sentiment": r["sentiment"],
+                    "topic": r["topics"][0] if r["topics"] else "unknown"
+                }
+                for r in results
+            ])
+        except Exception as e:
+            logger.error(f"❌ Failed to compute global trends: {e}")
+            global_trends = {}
+
+        show_results(results, global_trends)  # ✅ pass both
     else:
         logger.warning("⚠️ No results to display.")
 

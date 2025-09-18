@@ -16,7 +16,7 @@ def load_config():
         return yaml.safe_load(f)
 
 
-def fetch_live_news(query="technology", language="en", page_size=100):
+def fetch_live_news(query="technology", language="en", page_size=10):
     """
     Fetch live news articles from NewsAPI and normalize them into dicts.
     Docs: https://newsapi.org/docs/endpoints/everything

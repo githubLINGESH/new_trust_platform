@@ -38,3 +38,9 @@ def verify_facts(text: str) -> dict:
     except Exception as e:
         logger.error(f"Fact-checking failed: {e}")
         return {"verified": False, "matched_sources": []}
+
+if __name__ == "__main__":
+    # Simple test
+    import sys
+    result = verify_facts(sys.argv[0])
+    print(result)
