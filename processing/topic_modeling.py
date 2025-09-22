@@ -34,7 +34,7 @@ class TopicModeler:
         Returns a dict with cluster IDs as keys and a list of labeled topics as values.
         """
         try:
-            client = genai.Client(api_key="YOUR_API_KEY")
+            client = genai.Client(api_key="AIzaSyDZD8N2-YX9pQcC_29IKkXohgbpR55lm78")
 
             embeddings = []
             for doc in docs:
