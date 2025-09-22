@@ -26,9 +26,14 @@ def show_results(article_results: list, trends: dict):
     table.add_column("Trust Score", justify="center", style="bold red")
 
     for idx, article in enumerate(article_results, 1):
-        summary = article.get("summary", "")[:80] + "..."
+        raw_summary = article.get("summary", "")
+        if isinstance(raw_summary, list):
+            raw_summary = " ".join(raw_summary)
+
+        summary = (raw_summary[:80] + "...") if raw_summary else "N/A"
+
         sentiment = f"{article['sentiment']['label']} ({article['sentiment']['score']:.2f})"
-        topic = str(article.get("topic", "N/A"))
+        topic = str(article.get("topics", "N/A"))
         trust = str(article.get("trust_score", {}).get("trust_score", "N/A"))
         table.add_row(str(idx), summary, sentiment, topic, trust)
 

@@ -13,17 +13,24 @@ class TopicModeler:
             Always returns a list of dicts: [{"label": "topic"}]
             """
             try:
-                client = genai.Client(api_key="YOUR_API_KEY")
+                client = genai.Client(api_key="AIzaSyCeMMLTLhR9cLKA-M85LWJ65KInVUPPhQc")
                 response = client.models.generate_content(
-                    model="gemini-pro",
-                    contents=f"Extract 3-5 main topics or themes from the following article:\n\n{text}"
+                model="gemini-2.5-flash-lite",
+                contents=f"Extract 3-5 main topics or themes from the following article. Return them as a simple list:\n\n{text}"
                 )
-                # Gemini often returns a string → split into topics
-                topics = response.text.split("\n")
-                cleaned = [t.strip("-• ") for t in topics if t.strip()]
-                return [{"label": t} for t in cleaned]
+
+                raw_output = response.candidates[0].content.parts[0].text.strip()
+                topics = [t.strip("-• ") for t in raw_output.split("\n") if t.strip()]
+
+                if len(topics) == 0:
+                    print(" 😑 No topics found, defaulting to 'general'")
+                else:
+                    print(f"👍Extracted topics: {topics}")
+
+                return [{"label": t} for t in topics]
+
             except Exception as e:
-                print(f"Gemini topic modeling failed: {e}")
+                logger.error(f"Gemini analysis failed: {e}")
                 return [{"label": "general"}]
 
 
@@ -33,14 +40,15 @@ class TopicModeler:
         Generate topics by embedding articles and clustering.
         Returns a dict with cluster IDs as keys and a list of labeled topics as values.
         """
+        print("Executing embedidng model")
         try:
-            client = genai.Client(api_key="AIzaSyDZD8N2-YX9pQcC_29IKkXohgbpR55lm78")
+            client = genai.Client(api_key="AIzaSyCeMMLTLhR9cLKA-M85LWJ65KInVUPPhQc")
 
             embeddings = []
             for doc in docs:
                 resp = client.models.embed_content(
-                    model="models/embedding-001",
-                    content=doc
+                    model="gemini-embedding-001",
+                    contents=doc
                 )
                 embeddings.append(resp.embedding.values)
 
@@ -49,7 +57,10 @@ class TopicModeler:
 
             clustered = {i: [] for i in range(n_clusters)}
             for idx, label in enumerate(labels):
-                clustered[label].append({"label": docs[idx][:50], "score": 1.0})
+                clustered[label].append({
+                    "label": docs[idx][:50],  # short preview of doc
+                    "score": 1.0
+                })
 
             return clustered
 

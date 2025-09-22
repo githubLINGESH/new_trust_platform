@@ -16,41 +16,76 @@ from processing.topic_modeling import TopicModeler
 logger = get_logger(__name__)
 
 # 🔑 Configure Gemini
-client = genai.Client(api_key="AIzaSyDZD8N2-YX9pQcC_29IKkXohgbpR55lm78")
+client = genai.Client(api_key="AIzaSyCeMMLTLhR9cLKA-M85LWJ65KInVUPPhQc")
 
 def analyze_with_gemini(article_text: str) -> dict:
     """
     Use Gemini to summarize, extract entities, and provide context-aware insights.
     """
     prompt = f"""
-    You are an AI analyst. Analyze the following article:
+    Analyze the following news article and return ONLY valid JSON without any additional text, markdown, or formatting.
 
     ARTICLE:
-    {article_text}
+    {article_text[:4000]}  # Limit text to avoid token limits
 
-    Return valid JSON with keys:
-    - summary: 3-4 bullet points
-    - entities: list of companies/organizations mentioned
-    - sentiment_narrative: 1-2 sentence explanation of sentiment
-    - category: best fitting topic/industry
+    Return valid JSON with exactly these keys:
+    - "summary": array of 3-4 bullet point strings
+    - "entities": array of company/organization names mentioned
+    - "sentiment_narrative": string with 1-2 sentence explanation
+    - "category": string with best fitting topic/industry
+
+    Example format:
+    {{
+        "summary": ["Point 1", "Point 2", "Point 3"],
+        "entities": ["Company A", "Organization B"],
+        "sentiment_narrative": "The article expresses...",
+        "category": "technology"
+    }}
+
+    JSON:
     """
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-pro",
+            model="gemini-1.5-flash",
             contents=prompt
         )
         
-        # Ensure clean JSON parsing
+        # Clean the response - remove markdown code blocks if present
+        response_text = response.text.strip()
+        if response_text.startswith('```json'):
+            response_text = response_text[7:]
+        if response_text.endswith('```'):
+            response_text = response_text[:-3]
+        response_text = response_text.strip()
+        
         import json
-        data = json.loads(response.text)
+        data = json.loads(response_text)
+        
+        # Validate required keys
+        required_keys = ["summary", "entities", "sentiment_narrative", "category"]
+        for key in required_keys:
+            if key not in data:
+                data[key] = [] if key == "entities" else "N/A"
+                
         return data
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Gemini returned invalid JSON: {e}")
+        logger.debug(f"Raw response: {response.text if 'response' in locals() else 'No response'}")
+        # Return structured fallback
+        return {
+            "summary": ["Analysis unavailable"],
+            "entities": [],
+            "sentiment_narrative": "Sentiment analysis failed",
+            "category": "general"
+        }
     except Exception as e:
         logger.error(f"❌ Gemini analysis failed: {e}")
         return {
-            "summary": ["N/A"],
+            "summary": ["Analysis failed"],
             "entities": [],
-            "sentiment_narrative": "N/A",
+            "sentiment_narrative": "Analysis error",
             "category": "general"
         }
 
@@ -98,12 +133,14 @@ def run_pipeline():
             llm_analysis = analyze_with_gemini(text)
 
             # ---- Gemini Topic Modeling ----
-            try:
-                topics_raw = TopicModeler.gemini_topic_model(text) or []
-                topics = [t.get("label", "unknown") for t in topics_raw if isinstance(t, dict)]
-            except Exception as e:
-                logger.error(f"❌ Topic modeling failed for article '{title}': {e}")
-                topics = []
+            if llm_analysis:
+                try:
+                    topics_raw = TopicModeler.gemini_topic_model(text) or []
+                    #topics_raw = []
+                    topics = [t.get("label", "unknown") for t in topics_raw if isinstance(t, dict)]
+                except Exception as e:
+                    logger.error(f"❌ Topic modeling failed for article '{title}': {e}")
+                    topics = []
 
             # ---- Trend Analysis (safe input) ----
             try:
